@@ -1,0 +1,155 @@
+# ⚡ Acuity — PDF to flashcards
+
+Drop in a PDF of lecture notes, a textbook chapter or a study guide. Claude turns it into a flashcard set in seconds, and you study it with six game modes, XP, levels and streaks.
+
+**Live:** https://acuity-study.vercel.app
+
+![Acuity demo: upload a PDF, generate flashcards, study them](docs/demo.gif)
+
+<sub>Recorded on the live site: `samples/cell-biology.pdf` → 15 cards → Flashcards mode.</sub>
+
+---
+
+## Features
+
+- **PDF → flashcards with AI.** Upload up to 5 PDFs at once, or paste text. Choose the card count (auto, 10, 20 or 40), the style (term/definition, Q&A or mixed) and an optional focus ("chapter 3, key dates").
+- **Scanned PDFs work too.** If a PDF has no selectable text, the file is sent to Claude as a document so it can read the pages directly.
+- **Review before saving.** Edit, delete, add or swap cards, and rename the set. Claude suggests the title, description and emoji.
+- **Six study modes:**
+
+  | Mode | What it does |
+  | --- | --- |
+  | 🃏 Flashcards | Flip cards and sort them into *know it* or *still learning* (keyboard: Space, ←, →) |
+  | 🎯 Learn | Adaptive multiple choice until every card is mastered |
+  | ⌨️ Write | Type answers from memory, with typo-tolerant grading |
+  | 🧩 Match | Pair terms with definitions against the clock |
+  | ⚡ Blitz | 60-second sprint with combo multipliers |
+  | 📝 Test | Mixed exam of multiple choice, true/false and written questions |
+
+- **Gamified progress.** XP, levels, a daily goal, streaks, achievements, per-card mastery (0–5) and personal bests.
+- **No account needed.** Sets live in the browser's `localStorage`. You can export and import them as JSON.
+- Light and dark themes, plus a responsive layout.
+
+| | | |
+| --- | --- | --- |
+| ![Home](docs/screenshots/home.png) | ![Upload](docs/screenshots/upload.png) | ![Review](docs/screenshots/review.png) |
+| ![Set overview](docs/screenshots/set.png) | ![Study modes](docs/screenshots/modes.png) | ![Flashcard](docs/screenshots/flashcard-back.png) |
+
+---
+
+## Infrastructure
+
+Acuity is a single Next.js app on Vercel. It has no database and no user accounts. The only server code is one API route, which keeps the Anthropic API key away from the browser.
+
+```mermaid
+flowchart LR
+    subgraph Browser["Browser (client)"]
+        UI["Next.js / React UI<br/>components/*"]
+        PDFJS["pdf.js text extraction<br/>lib/pdf.ts + pdf.worker.min.mjs"]
+        LS[("localStorage<br/>acuity:v1<br/>sets · cards · XP")]
+        UI --> PDFJS
+        UI <--> LS
+    end
+
+    subgraph Vercel["Vercel"]
+        CDN["Edge CDN<br/>static pages + worker"]
+        FN["Serverless Function (Node.js)<br/>POST /api/generate<br/>maxDuration 300s"]
+        ENV[["Env var<br/>ANTHROPIC_API_KEY"]]
+        ENV -.-> FN
+    end
+
+    Claude["Anthropic API<br/>Claude (newest Sonnet)<br/>tool use: save_flashcards"]
+
+    Browser -- "GET /" --> CDN
+    UI -- "extracted text<br/>(or base64 PDF if scanned)" --> FN
+    FN -- "messages.create" --> Claude
+    Claude -- "title, emoji, cards[]" --> FN
+    FN -- "JSON" --> UI
+```
+
+### Request flow
+
+1. **The PDF is parsed in the browser.** `lib/pdf.ts` loads `pdfjs-dist` and pulls the text from each page. The worker file `public/pdf.worker.min.mjs` is copied from `node_modules` by the `postinstall` script, so Vercel serves it as a static asset. Most PDFs are therefore sent as plain text, which is small, fast and cheap.
+2. **Scanned PDFs are the fallback.** If the extracted text has fewer than 200 meaningful characters, a single PDF of up to about 3.2 MB is base64-encoded and sent instead. This stays below Vercel's roughly 4.5 MB request-body limit. The server passes it to Claude as a `document` content block, and Claude reads the pages itself.
+3. **`POST /api/generate`** (`app/api/generate/route.ts`) runs as a Node.js serverless function:
+   - It truncates text to 180k characters.
+   - It picks a model. `ANTHROPIC_MODEL` is used if set. Otherwise it lists the models on the account, takes the newest Sonnet, and caches that choice for the life of the function instance.
+   - It calls Claude with a `save_flashcards` tool whose JSON schema is `title`, `description`, `emoji` and `cards[{term, definition}]`, so the output is structured. If Claude answers in plain text instead, the route pulls JSON out of that text.
+   - It validates and cleans up the cards, then returns JSON. Errors come back as readable messages: 400, 422, 500 or 502.
+4. **The client stores everything.** `lib/store.ts` is a small external store (`useSyncExternalStore`) saved to `localStorage` under `acuity:v1`. Mastery, XP, streaks and achievements are all computed on the client.
+
+### Stack
+
+| Layer | Choice |
+| --- | --- |
+| Framework | Next.js 16 (App Router, Turbopack), React 19, TypeScript |
+| AI | `@anthropic-ai/sdk`, Claude with tool use |
+| PDF parsing | `pdfjs-dist` 5 (in the browser, in a Web Worker) |
+| Hosting | Vercel: static CDN plus one Node.js serverless function |
+| State | Browser `localStorage`, no backend database |
+| Styling | Hand-written CSS (`app/globals.css`), Google Fonts |
+
+### Project layout
+
+```
+app/
+  api/generate/route.ts   # the only server code: PDF/text → Claude → flashcards
+  layout.tsx, page.tsx    # shell, fonts, theme bootstrap
+  globals.css
+components/
+  App.tsx                 # hash router (#/create, #/set/:id/:mode, …)
+  Create.tsx              # upload, generate, review
+  SetView.tsx, Editor.tsx, Home.tsx, Profile.tsx, TopBar.tsx, FxLayer.tsx
+  modes/                  # Flashcards, Learn, Write, Match, Blitz, Test
+lib/
+  pdf.ts                  # pdf.js text extraction + base64 fallback
+  store.ts                # localStorage store, XP, levels, achievements
+  quiz.ts                 # shuffling, grading, distractors, weighted picks
+scripts/copy-pdf-worker.mjs
+samples/cell-biology.pdf  # try it out
+deploy.sh                 # one-command Vercel deploy
+```
+
+---
+
+## Run locally
+
+Requires Node 20+ and an [Anthropic API key](https://console.anthropic.com/).
+
+```bash
+git clone https://github.com/anfaznil/acuity.git
+cd acuity
+npm install                       # also copies the pdf.js worker into public/
+cp .env.example .env.local        # then add your ANTHROPIC_API_KEY
+npm run dev
+```
+
+Open http://localhost:3000 and upload `samples/cell-biology.pdf`.
+
+### Environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | yes | Used only by `/api/generate` on the server |
+| `ANTHROPIC_MODEL` | no | Pins a model ID. If unset, the newest Sonnet on your account is used |
+
+## Deploy to Vercel
+
+```bash
+./deploy.sh
+```
+
+The script:
+
+1. logs in to Vercel, opening a browser if needed
+2. links the folder to the `acuity-study` project
+3. copies `ANTHROPIC_API_KEY` from `.env.local` into the production environment
+4. runs `vercel deploy --prod`
+
+`.vercelignore` keeps `.env*`, `node_modules`, `.next` and `.vercel` out of the upload. Vercel then runs `npm install`, which triggers the `postinstall` worker copy, followed by `next build`.
+
+You can also import the repo in the Vercel dashboard and set `ANTHROPIC_API_KEY` under **Settings → Environment Variables**.
+
+---
+
+Made with [Claude](https://claude.ai).

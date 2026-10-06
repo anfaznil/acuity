@@ -1,0 +1,6 @@
+node_modules
+.next
+.vercel
+.env*
+public/pdf.worker.min.mjs
+!.env.example
