@@ -4,3 +4,4 @@ node_modules
 .env*
 public/pdf.worker.min.mjs
 !.env.example
+*.tsbuildinfo
