@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { levelInfo, useStore } from "@/lib/store";
+import { useAccount } from "@/lib/sync";
+import { syncLabel } from "./Account";
 import { go, type Route } from "./App";
 
 export function Ring({ pct, size = 64, stroke = 7, color = "var(--primary)", children }: { pct: number; size?: number; stroke?: number; color?: string; children?: React.ReactNode }) {
@@ -32,6 +34,7 @@ export function Ring({ pct, size = 64, stroke = 7, color = "var(--primary)", chi
 export default function TopBar({ route }: { route: Route }) {
   const profile = useStore((s) => s.profile);
   const lv = levelInfo(profile.xp);
+  const account = useAccount();
   const [theme, setTheme] = useState<string>("light");
 
   useEffect(() => {
@@ -77,6 +80,19 @@ export default function TopBar({ route }: { route: Route }) {
             </span>
             <span className="hide-sm">{profile.xp.toLocaleString()} XP</span>
           </button>
+          {account.checked && (
+            <button
+              className={`hud-pill ${route.name === "account" ? "active" : ""}`}
+              onClick={() => go("/account")}
+              title={account.username ? `@${account.username} · ${syncLabel(account)}` : "Sign in to sync across devices"}
+            >
+              <span className="sync-icon">
+                ☁️
+                <span className={`sync-dot ${account.username ? account.status : "none"}`} />
+              </span>
+              <span className="hide-sm">{account.username ? `@${account.username}` : "Sign in"}</span>
+            </button>
+          )}
           <button className="icon-btn" onClick={toggleTheme} aria-label="Toggle theme">
             {theme === "dark" ? "☀️" : "🌙"}
           </button>

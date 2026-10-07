@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { createSet, importData, levelInfo, levelTitle, masteryStats, useStore, type CardSet } from "@/lib/store";
 import { go } from "./App";
 import { Ring } from "./TopBar";
+import { useAccount } from "@/lib/sync";
 
 export const GRADS = ["var(--g0)", "var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)", "var(--g5)"];
 
@@ -67,6 +68,7 @@ export function timeAgo(t: number) {
 
 export default function Home() {
   const sets = useStore((s) => s.sets);
+  const account = useAccount();
   const profile = useStore((s) => s.profile);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"recent" | "name" | "progress">("recent");
@@ -166,7 +168,18 @@ export default function Home() {
       <div className="section-head">
         <div>
           <h2>Your library</h2>
-          <p className="muted">All sets are saved in this browser.</p>
+          <p className="muted">
+            {account.username ? (
+              "Synced to your account on every device."
+            ) : (
+              <>
+                Saved in this browser only.{" "}
+                <button className="btn btn-ghost btn-sm" style={{ padding: "2px 6px" }} onClick={() => go("/account")}>
+                  Sign in to sync
+                </button>
+              </>
+            )}
+          </p>
         </div>
         <div className="row wrap">
           <input className="input" style={{ width: 200 }} placeholder="Search sets…" value={q} onChange={(e) => setQ(e.target.value)} />

@@ -24,6 +24,7 @@ export type CardSet = {
   updatedAt: number;
   lastStudied?: number;
   best: { match?: number; blitz?: number; test?: number };
+  rev?: number; // last local modification (ms), used to merge across devices
 };
 
 export type Profile = {
@@ -36,9 +37,14 @@ export type Profile = {
   achievements: string[];
   totalCorrect: number;
   sessions: number;
+  rev?: number;
 };
 
-export type State = { sets: CardSet[]; profile: Profile };
+export type State = {
+  sets: CardSet[];
+  profile: Profile;
+  deleted?: Record<string, number>; // set id → deletion time, so deletes sync across devices
+};
 
 export type XpEvent = { id: number; amount: number; label?: string };
 export type Notice =
@@ -63,6 +69,7 @@ let loaded = false;
 const listeners = new Set<() => void>();
 const xpListeners = new Set<(e: XpEvent) => void>();
 const noticeListeners = new Set<(n: Notice) => void>();
+const changeListeners = new Set<() => void>();
 
 function load() {
   if (loaded || typeof window === "undefined") return;
@@ -71,7 +78,7 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as State;
-      state = { sets: parsed.sets ?? [], profile: { ...defaultProfile, ...parsed.profile } };
+      state = { sets: parsed.sets ?? [], profile: { ...defaultProfile, ...parsed.profile }, deleted: parsed.deleted ?? {} };
     }
   } catch {
     /* ignore */
@@ -93,7 +100,37 @@ function emit() {
 }
 
 function set(next: State) {
+  // Stamp anything that changed so other devices can tell which copy is newer.
+  const now = Date.now();
+  const prev = new Map(state.sets.map((s) => [s.id, s]));
+  next = { ...next, sets: next.sets.map((s) => (prev.get(s.id) === s ? s : { ...s, rev: now })) };
+  if (next.profile !== state.profile) next = { ...next, profile: { ...next.profile, rev: now } };
   state = next;
+  emit();
+  changeListeners.forEach((l) => l());
+}
+
+/** Fires after any local edit (not after applyRemote). Used by the sync engine. */
+export function onLocalChange(fn: () => void) {
+  changeListeners.add(fn);
+  return () => {
+    changeListeners.delete(fn);
+  };
+}
+
+/** Replace local state with a merged copy from the server, without re-stamping it. */
+export function applyRemote(next: State) {
+  load();
+  state = { sets: next.sets ?? [], profile: { ...defaultProfile, ...next.profile }, deleted: next.deleted ?? {} };
+  rollDay();
+  emit();
+}
+
+/** Wipe this browser's copy (used on sign-out so a shared device doesn't keep someone's sets). */
+export function clearLocal() {
+  load();
+  state = { sets: [], profile: { ...defaultProfile }, deleted: {} };
+  rollDay();
   emit();
 }
 
@@ -102,7 +139,7 @@ export function getState() {
   return state;
 }
 
-const serverSnapshot: State = { sets: [], profile: defaultProfile };
+const serverSnapshot: State = { sets: [], profile: defaultProfile, deleted: {} };
 
 export function useStore<T>(selector: (s: State) => T): T {
   return useSyncExternalStore(
@@ -285,7 +322,7 @@ export function updateSet(id: string, patch: Partial<CardSet>) {
 
 export function deleteSet(id: string) {
   load();
-  set({ ...state, sets: state.sets.filter((s) => s.id !== id) });
+  set({ ...state, sets: state.sets.filter((s) => s.id !== id), deleted: { ...state.deleted, [id]: Date.now() } });
 }
 
 export function recordAnswer(setId: string, cardId: string, correct: boolean) {

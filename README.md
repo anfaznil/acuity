@@ -27,7 +27,7 @@ Drop in a PDF of lecture notes, a textbook chapter or a study guide. Claude turn
   | 📝 Test | Mixed exam of multiple choice, true/false and written questions |
 
 - **Gamified progress.** XP, levels, a daily goal, streaks, achievements, per-card mastery (0–5) and personal bests.
-- **No account needed.** Sets live in the browser's `localStorage`. You can export and import them as JSON.
+- **Sync across devices.** Sign in with a username and password and your sets, XP and streaks follow you to your phone, tablet and laptop. Signing in is optional: without it, everything stays in the browser, and you can still export and import JSON backups.
 - Light and dark themes, plus a responsive layout.
 
 | | | |
@@ -39,7 +39,7 @@ Drop in a PDF of lecture notes, a textbook chapter or a study guide. Claude turn
 
 ## Infrastructure
 
-Acuity is a single Next.js app on Vercel. It has no database and no user accounts. The only server code is one API route, which keeps the Anthropic API key away from the browser.
+Acuity is a single Next.js app on Vercel. The browser does most of the work. The server has two jobs: calling Claude, which keeps the API key off the client, and storing each signed-in user's data in a private Vercel Blob store. There's no separate database service.
 
 ```mermaid
 flowchart LR
@@ -54,8 +54,12 @@ flowchart LR
     subgraph Vercel["Vercel"]
         CDN["Edge CDN<br/>static pages + worker"]
         FN["Serverless Function (Node.js)<br/>POST /api/generate<br/>maxDuration 300s"]
-        ENV[["Env var<br/>ANTHROPIC_API_KEY"]]
+        AUTH["Serverless Functions<br/>/api/auth/* · /api/sync"]
+        BLOB[("Private Vercel Blob<br/>users/&lt;name&gt;.json<br/>data/&lt;name&gt;.json")]
+        ENV[["Env vars<br/>ANTHROPIC_API_KEY<br/>AUTH_SECRET · BLOB_READ_WRITE_TOKEN"]]
         ENV -.-> FN
+        ENV -.-> AUTH
+        AUTH <--> BLOB
     end
 
     Claude["Anthropic API<br/>Claude (newest Sonnet)<br/>tool use: save_flashcards"]
@@ -65,6 +69,7 @@ flowchart LR
     FN -- "messages.create" --> Claude
     Claude -- "title, emoji, cards[]" --> FN
     FN -- "JSON" --> UI
+    LS <-- "lib/sync.ts<br/>merge + push/pull<br/>(session cookie)" --> AUTH
 ```
 
 ### Request flow
@@ -76,7 +81,31 @@ flowchart LR
    - It picks a model. `ANTHROPIC_MODEL` is used if set. Otherwise it lists the models on the account, takes the newest Sonnet, and caches that choice for the life of the function instance.
    - It calls Claude with a `save_flashcards` tool whose JSON schema is `title`, `description`, `emoji` and `cards[{term, definition}]`, so the output is structured. If Claude answers in plain text instead, the route pulls JSON out of that text.
    - It validates and cleans up the cards, then returns JSON. Errors come back as readable messages: 400, 422, 500 or 502.
-4. **The client stores everything.** `lib/store.ts` is a small external store (`useSyncExternalStore`) saved to `localStorage` under `acuity:v1`. Mastery, XP, streaks and achievements are all computed on the client.
+4. **The client stores everything locally first.** `lib/store.ts` is a small external store (`useSyncExternalStore`) saved to `localStorage` under `acuity:v1`. Mastery, XP, streaks and achievements are all computed on the client, so the app is instant and works offline.
+
+### Accounts and sync
+
+```mermaid
+sequenceDiagram
+    participant P as Phone
+    participant S as /api/sync
+    participant B as Blob (data/<user>.json)
+    participant L as Laptop
+    P->>S: PUT whole local state
+    S->>B: read (+ETag)
+    S->>S: mergeStates(cloud, phone)
+    S->>B: write if ETag still matches (else retry)
+    S-->>P: merged state → localStorage
+    L->>S: PUT on sign-in / focus / edit
+    S-->>L: merged state incl. phone's sets
+```
+
+- **Sign-in** (`app/api/auth/*`). Usernames and passwords are stored at `users/<username>.json` in the Blob store. Passwords are hashed with scrypt and a random salt per user. A session is a stateless cookie: HttpOnly, Secure, SameSite=Lax, valid for a year, and HMAC-signed with `AUTH_SECRET`.
+- **Storage.** Each user's whole app state is one JSON document at `data/<username>.json` in a **private** Vercel Blob store. Only the server can read it, using `BLOB_READ_WRITE_TOKEN`.
+- **When it syncs** (`lib/sync.ts`): on load, 1.5 s after any edit, when the tab regains focus or comes back online, and every 60 s while the tab is visible. The client always sends its full state and adopts whatever merged state comes back.
+- **Merging** (`lib/merge.ts`, shared by client and server). Every set carries a `rev` timestamp, stamped automatically on any change, and the newest copy of each set wins. A deleted set leaves a short record of its ID and deletion time, so the delete reaches other devices; these records expire after 6 months. XP, correct answers and session counts take the higher value from each side, achievements are combined, and streaks follow whichever device was active most recently.
+- **No lost updates.** The server reads the stored document, merges, and writes back on condition that it hasn't changed since the read (an `ifMatch` ETag check). If another device wrote in between, it re-reads and merges again.
+- **Signing in on a device with existing sets** adds them to the account. **Signing out** pushes any final changes and then clears the browser's copy, so a shared device doesn't keep someone's sets. If those last changes can't be pushed, the app warns first.
 
 ### Stack
 
@@ -85,25 +114,33 @@ flowchart LR
 | Framework | Next.js 16 (App Router, Turbopack), React 19, TypeScript |
 | AI | `@anthropic-ai/sdk`, Claude with tool use |
 | PDF parsing | `pdfjs-dist` 5 (in the browser, in a Web Worker) |
-| Hosting | Vercel: static CDN plus one Node.js serverless function |
-| State | Browser `localStorage`, no backend database |
+| Hosting | Vercel: static CDN plus Node.js serverless functions |
+| State | Browser `localStorage`, synced to a private Vercel Blob store (`@vercel/blob`) |
+| Auth | Username + password, scrypt hashes, HMAC-signed session cookie (`node:crypto`, no auth library) |
 | Styling | Hand-written CSS (`app/globals.css`), Google Fonts |
 
 ### Project layout
 
 ```
 app/
-  api/generate/route.ts   # the only server code: PDF/text → Claude → flashcards
+  api/generate/route.ts   # PDF/text → Claude → flashcards
+  api/auth/*/route.ts     # signup, login, logout, me
+  api/sync/route.ts       # merge + conditional write of a user's state
   layout.tsx, page.tsx    # shell, fonts, theme bootstrap
   globals.css
 components/
   App.tsx                 # hash router (#/create, #/set/:id/:mode, …)
   Create.tsx              # upload, generate, review
+  Account.tsx             # sign in / sign up / sync status
   SetView.tsx, Editor.tsx, Home.tsx, Profile.tsx, TopBar.tsx, FxLayer.tsx
   modes/                  # Flashcards, Learn, Write, Match, Blitz, Test
 lib/
   pdf.ts                  # pdf.js text extraction + base64 fallback
-  store.ts                # localStorage store, XP, levels, achievements
+  store.ts                # localStorage store, XP, levels, achievements, rev stamps
+  sync.ts                 # client sync engine + account actions
+  merge.ts                # pure state merge (client + server)
+  server/auth.ts          # scrypt, session cookie signing
+  server/db.ts            # JSON documents on private Vercel Blob
   quiz.ts                 # shuffling, grading, distractors, weighted picks
 scripts/copy-pdf-worker.mjs
 samples/cell-biology.pdf  # try it out
@@ -121,10 +158,11 @@ git clone https://github.com/anfaznil/acuity.git
 cd acuity
 npm install                       # also copies the pdf.js worker into public/
 cp .env.example .env.local        # then add your ANTHROPIC_API_KEY
+npx vercel link && npx vercel env pull .env.local   # optional: Blob token for sign-in/sync
 npm run dev
 ```
 
-Open http://localhost:3000 and upload `samples/cell-biology.pdf`.
+Open http://localhost:3000 and upload `samples/cell-biology.pdf`. Without `BLOB_READ_WRITE_TOKEN` and `AUTH_SECRET`, the app still works, but only in guest mode (local storage).
 
 ### Environment variables
 
@@ -132,6 +170,8 @@ Open http://localhost:3000 and upload `samples/cell-biology.pdf`.
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | yes | Used only by `/api/generate` on the server |
 | `ANTHROPIC_MODEL` | no | Pins a model ID. If unset, the newest Sonnet on your account is used |
+| `BLOB_READ_WRITE_TOKEN` | for sync | Set automatically when a Blob store is connected to the Vercel project |
+| `AUTH_SECRET` | for sync | 32+ random characters that sign session cookies (`openssl rand -base64 48`) |
 
 ## Deploy to Vercel
 
@@ -144,7 +184,8 @@ The script:
 1. logs in to Vercel, opening a browser if needed
 2. links the folder to the `acuity-study` project
 3. copies `ANTHROPIC_API_KEY` from `.env.local` into the production environment
-4. runs `vercel deploy --prod`
+4. on the first run, creates a private Blob store (`acuity-sync`) and generates `AUTH_SECRET`
+5. runs `vercel deploy --prod`
 
 `.vercelignore` keeps `.env*`, `node_modules`, `.next` and `.vercel` out of the upload. Vercel then runs `npm install`, which triggers the `postinstall` worker copy, followed by `next build`.
 
