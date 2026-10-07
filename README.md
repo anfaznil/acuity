@@ -100,9 +100,18 @@ sequenceDiagram
     S-->>L: merged state incl. phone's sets
 ```
 
-- **Sign-in** (`app/api/auth/*`). Usernames and passwords are stored at `users/<username>.json` in the Blob store. Passwords are hashed with scrypt and a random salt per user. A session is a stateless cookie: HttpOnly, Secure, SameSite=Lax, valid for a year, and HMAC-signed with `AUTH_SECRET`.
+- **Sign-in** (`app/api/auth/*`). Usernames and passwords are stored at `users/<username>.json` in the Blob store. Passwords are hashed with scrypt and a random salt per user. A session is a cookie: HttpOnly, Secure, SameSite=Lax, valid for a year, and HMAC-signed with `AUTH_SECRET`. It carries a session version (`sv`) that must match the user record, so bumping `sv` signs out every device.
+- **Forgot password: recovery codes.** At sign-up, the user gets a 16-character recovery code (about 79 bits, no look-alike characters), shown once. Only its scrypt hash is stored.
+  - **Reset** (`/api/auth/reset`): username + code + new password. This sets the new password, replaces the used code with a new one, and bumps `sv`, so every other device is signed out.
+  - **New code:** signed-in users can make one from the Account page by re-entering their password (`/api/auth/recovery-code`). The old code stops working.
+  - **Unknown usernames** take the same time as real ones (a dummy scrypt), so attempts can't reveal which usernames exist.
+  - **If the code is lost too**, the owner can run `node --env-file=.env.local scripts/reset-password.mjs <username>`. It prints a temporary password and a new recovery code.
 - **Storage.** Each user's whole app state is one JSON document at `data/<username>.json` in a **private** Vercel Blob store. Only the server can read it, using `BLOB_READ_WRITE_TOKEN`.
-- **When it syncs** (`lib/sync.ts`): on load, 1.5 s after any edit, when the tab regains focus or comes back online, and every 60 s while the tab is visible. The client always sends its full state and adopts whatever merged state comes back.
+- **When it syncs** (`lib/sync.ts`). The free Blob plan includes about 2,000 writes and 10,000 reads a month, so sync is built around writing rarely:
+  - **Pulls are read-only:** on load, when the tab regains focus or comes back online, and every 5 minutes while visible.
+  - **Pushes happen only when there are local edits.** They're batched: 15 s after the last edit, and at most every 2 minutes during non-stop studying. The app also pushes when it's hidden or closed, using a `keepalive` request.
+  - **No-op writes are skipped.** The server compares a fingerprint of the merged state with what's already stored.
+  - In testing, creating a set and answering 10 cards produced **one** write.
 - **Merging** (`lib/merge.ts`, shared by client and server). Every set carries a `rev` timestamp, stamped automatically on any change, and the newest copy of each set wins. A deleted set leaves a short record of its ID and deletion time, so the delete reaches other devices; these records expire after 6 months. XP, correct answers and session counts take the higher value from each side, achievements are combined, and streaks follow whichever device was active most recently.
 - **No lost updates.** The server reads the stored document, merges, and writes back on condition that it hasn't changed since the read (an `ifMatch` ETag check). If another device wrote in between, it re-reads and merges again.
 - **Signing in on a device with existing sets** adds them to the account. **Signing out** pushes any final changes and then clears the browser's copy, so a shared device doesn't keep someone's sets. If those last changes can't be pushed, the app warns first.
@@ -124,7 +133,7 @@ sequenceDiagram
 ```
 app/
   api/generate/route.ts   # PDF/text → Claude → flashcards
-  api/auth/*/route.ts     # signup, login, logout, me
+  api/auth/*/route.ts     # signup, login, logout, me, reset, recovery-code
   api/sync/route.ts       # merge + conditional write of a user's state
   layout.tsx, page.tsx    # shell, fonts, theme bootstrap
   globals.css
@@ -143,6 +152,7 @@ lib/
   server/db.ts            # JSON documents on private Vercel Blob
   quiz.ts                 # shuffling, grading, distractors, weighted picks
 scripts/copy-pdf-worker.mjs
+scripts/reset-password.mjs  # owner fallback: reset a user who lost their recovery code
 samples/cell-biology.pdf  # try it out
 deploy.sh                 # one-command Vercel deploy
 ```

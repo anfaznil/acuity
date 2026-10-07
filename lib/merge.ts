@@ -54,3 +54,13 @@ function mergeProfile(a: Profile, b: Profile): Profile {
   }
   return merged;
 }
+
+/** Cheap identity of a state's contents: equal fingerprints mean nothing needs writing. */
+export function fingerprint(s: State | null | undefined): string {
+  if (!s) return "";
+  const sets = (s.sets ?? []).map((x) => `${x.id}:${x.rev ?? x.updatedAt ?? 0}`).sort();
+  const deleted = Object.entries(s.deleted ?? {}).map(([id, t]) => `${id}:${t}`).sort();
+  const p = s.profile ?? ({} as Profile);
+  const profile = [p.xp, p.streak, p.lastActive, p.todayXp, p.todayDate, p.dailyGoal, p.totalCorrect, p.sessions, [...(p.achievements ?? [])].sort().join(","), p.rev];
+  return JSON.stringify([sets, deleted, profile]);
+}

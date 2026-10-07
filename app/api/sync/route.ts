@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionUser } from "@/lib/server/auth";
 import { BlobPreconditionFailedError, dataPath, readJson, writeJson } from "@/lib/server/db";
-import { mergeStates } from "@/lib/merge";
+import { fingerprint, mergeStates } from "@/lib/merge";
 import type { State } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ function unauthorized() {
 }
 
 export async function GET(req: NextRequest) {
-  const user = getSessionUser(req);
+  const user = await getSessionUser(req);
   if (!user) return unauthorized();
   const doc = await readJson<State>(dataPath(user));
   return NextResponse.json({ state: doc?.data ?? null }, { headers: noStore });
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
 
 // The client sends its whole local state; we merge it into the stored copy and return the result.
 export async function PUT(req: NextRequest) {
-  const user = getSessionUser(req);
+  const user = await getSessionUser(req);
   if (!user) return unauthorized();
 
   const raw = await req.text();
@@ -40,6 +40,10 @@ export async function PUT(req: NextRequest) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await readJson<State>(dataPath(user));
     const merged = current ? mergeStates(current.data, incoming) : mergeStates(incoming, incoming);
+    // Blob writes are the scarce resource on the free plan, so skip no-op writes.
+    if (current && fingerprint(merged) === fingerprint(current.data)) {
+      return NextResponse.json({ state: merged }, { headers: noStore });
+    }
     try {
       await writeJson(dataPath(user), merged, current ? { ifMatch: current.etag } : { createOnly: true });
       return NextResponse.json({ state: merged }, { headers: noStore });

@@ -68,7 +68,7 @@ export default function App() {
         {route.name === "edit" && <Editor id={route.id} />}
         {route.name === "study" && <Study id={route.id} mode={route.mode} />}
       </main>
-      <footer className="footer">Acuity · Made with Claude</footer>
+      <footer className="footer">Acuity</footer>
       <FxLayer />
     </>
   );

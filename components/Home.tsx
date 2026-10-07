@@ -111,7 +111,7 @@ export default function Home() {
             <br />
             get flashcards.
           </h1>
-          <p>Upload lecture notes, a textbook chapter or study guide — Claude turns it into a study set in seconds. Then play your way to mastery.</p>
+          <p>Upload lecture notes, a textbook chapter or study guide — AI turns it into a study set in seconds. Then play your way to mastery.</p>
           <div className="row wrap mt-24">
             <button className="btn btn-lg" onClick={() => go("/create")}>
               📄 Upload a PDF

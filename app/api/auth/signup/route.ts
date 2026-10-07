@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { hashPassword, normalizeUsername, setSession, type UserRecord } from "@/lib/server/auth";
+import { hashPassword, newRecoveryCode, normalizeUsername, setSession, type UserRecord } from "@/lib/server/auth";
 import { readJson, userPath, writeJson } from "@/lib/server/db";
 
 export const runtime = "nodejs";
@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "That username is taken. Try signing in instead." }, { status: 409 });
   }
 
-  const record: UserRecord = { username, ...(await hashPassword(password)), createdAt: Date.now() };
+  const { code, recoverySalt, recoveryHash } = await newRecoveryCode();
+  const record: UserRecord = { username, ...(await hashPassword(password)), recoverySalt, recoveryHash, sv: 0, createdAt: Date.now() };
   try {
     await writeJson(userPath(username), record, { createOnly: true });
   } catch {
@@ -26,7 +27,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "That username is taken. Try signing in instead." }, { status: 409 });
   }
 
-  const res = NextResponse.json({ username });
-  setSession(res, username);
+  // The plain recovery code is only ever shown here; we store just its hash.
+  const res = NextResponse.json({ username, recoveryCode: code });
+  setSession(res, record);
   return res;
 }

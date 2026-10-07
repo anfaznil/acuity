@@ -78,7 +78,7 @@ export default function TopBar({ route }: { route: Route }) {
             <span className="xpbar">
               <div style={{ width: `${lv.pct * 100}%` }} />
             </span>
-            <span className="hide-sm">{profile.xp.toLocaleString()} XP</span>
+            <span className="hide-sm hide-md">{profile.xp.toLocaleString()} XP</span>
           </button>
           {account.checked && (
             <button
@@ -96,7 +96,7 @@ export default function TopBar({ route }: { route: Route }) {
           <button className="icon-btn" onClick={toggleTheme} aria-label="Toggle theme">
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
-          <button className="btn btn-primary btn-sm hide-sm" onClick={() => go("/create")}>
+          <button className="btn btn-primary btn-sm hide-sm hide-md" onClick={() => go("/create")}>
             + New set
           </button>
         </div>
