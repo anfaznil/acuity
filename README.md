@@ -23,7 +23,7 @@ Drop in a PDF of lecture notes, a textbook chapter or a study guide. Claude turn
   | 🎯 Learn | Adaptive multiple choice until every card is mastered |
   | ⌨️ Write | Type answers from memory, with typo-tolerant grading |
   | 🧩 Match | Pair terms with definitions against the clock |
-  | ⚡ Blitz | 60-second sprint with combo multipliers |
+  | ⚡ Blitz | Timed sprint (30 sec to 5 min, with a suggested time based on set size) with combo multipliers and a record per timer |
   | 📝 Test | Mixed exam of multiple choice, true/false and written questions |
 
 - **Gamified progress.** XP, levels, a daily goal, streaks, achievements, per-card mastery (0–5) and personal bests.

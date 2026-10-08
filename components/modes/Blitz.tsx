@@ -1,20 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { addXp, finishSession, recordAnswer, recordBest, unlock, type CardSet } from "@/lib/store";
+import { addXp, finishSession, recordAnswer, recordBest, unlock, updateSet, type CardSet } from "@/lib/store";
+import { BLITZ_OPTIONS, blitzKey, formatSeconds, suggestedSeconds } from "@/lib/blitz";
 import { answerOf, choicesFor, promptOf, type Direction } from "@/lib/quiz";
 import { Results, StudyTop } from "../Study";
 import { Ring } from "../TopBar";
 import { ChoiceQuestion } from "./shared";
 
-const DURATION = 60_000;
 
 const multFor = (combo: number) => (combo >= 15 ? 4 : combo >= 10 ? 3 : combo >= 5 ? 2 : 1);
 
 export default function Blitz({ set }: { set: CardSet }) {
+  const suggested = suggestedSeconds(set.cards.length);
+  const [seconds, setSeconds] = useState<number>(set.blitzSeconds ?? suggested);
+  const duration = seconds * 1000;
+  const record = set.best[blitzKey(seconds)];
   const [phase, setPhase] = useState<"ready" | "play" | "done">("ready");
   const [end, setEnd] = useState(0);
-  const [left, setLeft] = useState(DURATION);
+  const [left, setLeft] = useState(duration);
   const [qKey, setQKey] = useState(0);
   const [combo, setCombo] = useState(0);
   const [stats, setStats] = useState({ right: 0, wrong: 0, best: 0 });
@@ -49,17 +53,18 @@ export default function Blitz({ set }: { set: CardSet }) {
         addXp(bonus, "Blitz bonus");
         setXp((x) => x + bonus);
       }
-      setIsBest(recordBest(set.id, "blitz", stats.right) && stats.right > 0);
-      if (stats.right >= 20) unlock("blitz_20");
+      setIsBest(recordBest(set.id, blitzKey(seconds), stats.right) && stats.right > 0);
+      if (stats.right >= 20 && seconds <= 60) unlock("blitz_20");
       finishSession();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
   const start = () => {
+    if (set.blitzSeconds !== seconds) updateSet(set.id, { blitzSeconds: seconds });
     setPhase("play");
-    setEnd(performance.now() + DURATION);
-    setLeft(DURATION);
+    setEnd(performance.now() + duration);
+    setLeft(duration);
     setCombo(0);
     setStats({ right: 0, wrong: 0, best: 0 });
     setXp(0);
@@ -91,7 +96,7 @@ export default function Blitz({ set }: { set: CardSet }) {
       <Results
         set={set}
         emoji={isBest ? "🏅" : "⚡"}
-        title={isBest ? "New Blitz record!" : "Time's up!"}
+        title={isBest ? `New ${formatSeconds(seconds)} Blitz record!` : "Time's up!"}
         score={`${stats.right}`}
         stats={[
           ["Correct", stats.right],
@@ -111,11 +116,26 @@ export default function Blitz({ set }: { set: CardSet }) {
         <StudyTop set={set} progress={0} />
         <div className="q-card center fade-in">
           <div style={{ fontSize: 56 }}>⚡</div>
-          <h2 className="mt-8">60-second Blitz</h2>
+          <h2 className="mt-8">{formatSeconds(seconds)} Blitz</h2>
           <p className="muted mt-8" style={{ maxWidth: 440, margin: "8px auto 0" }}>
             Answer as many as you can. Build a streak to multiply your XP — <b>2×</b> at 5, <b>3×</b> at 10, <b>4×</b> at 15. Wrong answers cost 2 seconds.
           </p>
-          {set.best.blitz !== undefined && <p className="mt-16 chip">Your record: {set.best.blitz} correct</p>}
+          <div className="mt-24">
+            <span className="label">Timer</span>
+            <div className="seg" role="radiogroup" aria-label="Timer" style={{ justifyContent: "center" }}>
+              {BLITZ_OPTIONS.map((s) => (
+                <button key={s} role="radio" aria-checked={seconds === s} className={seconds === s ? "active" : ""} onClick={() => setSeconds(s)}>
+                  {formatSeconds(s)}
+                </button>
+              ))}
+            </div>
+            <p className="faint mt-8" style={{ fontSize: 13 }}>
+              {seconds === suggested
+                ? `Suggested for ${set.cards.length} cards`
+                : `We'd suggest ${formatSeconds(suggested)} for ${set.cards.length} cards`}
+            </p>
+          </div>
+          {record !== undefined && <p className="mt-16 chip">Your {formatSeconds(seconds)} record: {record} correct</p>}
           <div className="mt-24">
             <button className="btn btn-primary btn-lg" onClick={start} autoFocus>
               Go!
@@ -131,7 +151,7 @@ export default function Blitz({ set }: { set: CardSet }) {
     <div>
       <StudyTop
         set={set}
-        progress={left / DURATION}
+        progress={left / duration}
         right={
           <span className="row" style={{ gap: 8 }}>
             {mult > 1 && <span className="mult">{mult}× XP</span>}
@@ -140,8 +160,10 @@ export default function Blitz({ set }: { set: CardSet }) {
         }
       />
       <div className="row" style={{ justifyContent: "center", marginBottom: 18, gap: 24 }}>
-        <Ring pct={left / DURATION} size={84} stroke={8} color={left < 10_000 ? "var(--bad)" : "var(--warn)"}>
-          <span style={{ fontSize: 22, fontFamily: "var(--font-display)" }}>{Math.ceil(left / 1000)}</span>
+        <Ring pct={left / duration} size={84} stroke={8} color={left < 10_000 ? "var(--bad)" : "var(--warn)"}>
+          <span style={{ fontSize: left >= 60_000 ? 18 : 22, fontFamily: "var(--font-display)" }}>
+            {left >= 60_000 ? `${Math.floor(Math.ceil(left / 1000) / 60)}:${String(Math.ceil(left / 1000) % 60).padStart(2, "0")}` : Math.ceil(left / 1000)}
+          </span>
         </Ring>
         <div>
           <div className="stat-val">{stats.right}</div>

@@ -23,9 +23,14 @@ export type CardSet = {
   createdAt: number;
   updatedAt: number;
   lastStudied?: number;
-  best: { match?: number; blitz?: number; test?: number };
+  best: Best;
+  blitzSeconds?: number; // last Blitz timer chosen for this set
   rev?: number; // last local modification (ms), used to merge across devices
 };
+
+// Personal bests. Blitz records are per timer: "blitz" is the 60s record, "blitz_120" is 2 min, etc.
+export type BestKey = "match" | "test" | "blitz" | `blitz_${number}`;
+export type Best = { [K in BestKey]?: number };
 
 export type Profile = {
   xp: number;
@@ -230,7 +235,7 @@ export const ACHIEVEMENTS: Record<string, { name: string; desc: string; icon: st
   streak_7: { name: "Unstoppable", desc: "7-day study streak", icon: "🏆" },
   perfect_test: { name: "Flawless", desc: "Score 100% on a test", icon: "💯" },
   speed_match: { name: "Lightning Hands", desc: "Finish Match in under 25s", icon: "🌩️" },
-  blitz_20: { name: "Blitzkrieg", desc: "20+ correct in one Blitz", icon: "💥" },
+  blitz_20: { name: "Blitzkrieg", desc: "20+ correct in a 1-minute Blitz", icon: "💥" },
   mastered_set: { name: "Mastery", desc: "Master every card in a set", icon: "🧠" },
   combo_10: { name: "On Fire", desc: "Hit a 10× combo", icon: "🎯" },
   goal: { name: "Goal Getter", desc: "Hit your daily XP goal", icon: "🥅" },
@@ -363,7 +368,7 @@ export function toggleStar(setId: string, cardId: string) {
   });
 }
 
-export function recordBest(setId: string, key: "match" | "blitz" | "test", value: number): boolean {
+export function recordBest(setId: string, key: BestKey, value: number): boolean {
   load();
   const s = state.sets.find((x) => x.id === setId);
   if (!s) return false;

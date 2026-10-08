@@ -2,6 +2,7 @@
 
 import { deleteSet, exportData, masteryStats, resetProgress, toggleStar, useStore } from "@/lib/store";
 import { formatTime } from "@/lib/quiz";
+import { blitzKey, formatSeconds } from "@/lib/blitz";
 import { go } from "./App";
 import { GRADS, timeAgo } from "./Home";
 import { useState } from "react";
@@ -11,7 +12,7 @@ export const MODES = [
   { key: "learn", name: "Learn", icon: "🎯", desc: "Adaptive multiple choice until mastered", xp: "+10 XP / answer", grad: "var(--g2)", min: 2 },
   { key: "write", name: "Write", icon: "⌨️", desc: "Type answers from memory", xp: "+15 XP / answer", grad: "var(--g3)", min: 1 },
   { key: "match", name: "Match", icon: "🧩", desc: "Pair terms and definitions against the clock", xp: "Up to 150 XP", grad: "var(--g1)", min: 2 },
-  { key: "blitz", name: "Blitz", icon: "⚡", desc: "60-second sprint with combo multipliers", xp: "Combo ×4 XP", grad: "var(--g4)", min: 2 },
+  { key: "blitz", name: "Blitz", icon: "⚡", desc: "Timed sprint with combo multipliers", xp: "Combo ×4 XP", grad: "var(--g4)", min: 2 },
   { key: "test", name: "Test", icon: "📝", desc: "Mixed exam: MC, true/false and written", xp: "Up to 200 XP", grad: "var(--g5)", min: 2 },
 ] as const;
 
@@ -83,7 +84,11 @@ export default function SetView({ id }: { id: string }) {
           </div>
           <div className="row wrap" style={{ gap: 8 }}>
             {s.best.match !== undefined && <span className="chip">🧩 Best match {formatTime(s.best.match)}</span>}
-            {s.best.blitz !== undefined && <span className="chip">⚡ Best blitz {s.best.blitz}</span>}
+            {s.best[blitzKey(s.blitzSeconds ?? 60)] !== undefined && (
+              <span className="chip">
+                ⚡ Best blitz ({formatSeconds(s.blitzSeconds ?? 60)}) {s.best[blitzKey(s.blitzSeconds ?? 60)]}
+              </span>
+            )}
             {s.best.test !== undefined && <span className="chip">📝 Best test {s.best.test}%</span>}
           </div>
         </div>
