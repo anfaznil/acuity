@@ -12,6 +12,7 @@ import {
   type Account as AccountState,
 } from "@/lib/sync";
 import { go } from "./App";
+import { returnAfterSignIn } from "./GuestNudge";
 
 export function syncLabel(a: AccountState) {
   if (a.status === "syncing") return "Syncing…";
@@ -22,7 +23,7 @@ export function syncLabel(a: AccountState) {
   return "Connected";
 }
 
-export default function Account() {
+export default function Account({ initialMode }: { initialMode?: "signup" | "login" }) {
   const account = useAccount();
   const sets = useStore((s) => s.sets);
   // A freshly issued recovery code takes over the page until it's been saved.
@@ -30,12 +31,12 @@ export default function Account() {
 
   if (!account.checked) return <div style={{ minHeight: "50vh" }} />;
   if (code && account.username) {
-    return <RecoveryCode code={code} username={account.username} onDone={() => (setCode(null), go("/"))} />;
+    return <RecoveryCode code={code} username={account.username} onDone={() => (setCode(null), returnAfterSignIn())} />;
   }
   return account.username ? (
     <SignedIn account={account} setCount={sets.length} onNewCode={setCode} />
   ) : (
-    <SignInForm localSets={sets.length} onCode={setCode} />
+    <SignInForm localSets={sets.length} onCode={setCode} initialMode={initialMode} />
   );
 }
 
@@ -191,8 +192,8 @@ function SignedIn({ account, setCount, onNewCode }: { account: AccountState; set
 type Mode = "signup" | "login" | "reset";
 const TITLES: Record<Mode, string> = { signup: "Create an account", login: "Welcome back", reset: "Reset your password" };
 
-function SignInForm({ localSets, onCode }: { localSets: number; onCode: (c: string) => void }) {
-  const [mode, setMode] = useState<Mode>("signup");
+function SignInForm({ localSets, onCode, initialMode }: { localSets: number; onCode: (c: string) => void; initialMode?: Mode }) {
+  const [mode, setMode] = useState<Mode>(initialMode ?? "signup");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -213,7 +214,7 @@ function SignInForm({ localSets, onCode }: { localSets: number; onCode: (c: stri
     setBusy(false);
     if (r.error) setError(r.error);
     else if (r.recoveryCode) onCode(r.recoveryCode);
-    else go("/");
+    else returnAfterSignIn();
   };
 
   return (

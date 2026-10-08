@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { createSet, updateSet } from "@/lib/store";
 import { extractPdfText, fileToBase64 } from "@/lib/pdf";
 import { go } from "./App";
+import { nudgeGuest } from "./GuestNudge";
 import SetForm, { type Draft } from "./SetForm";
 
 type Tab = "pdf" | "text" | "manual";
@@ -102,6 +103,7 @@ export default function Create({ initialTab }: { initialTab?: string }) {
     const id = createSet({ ...d, source });
     if (d.color !== undefined) updateSet(id, { color: d.color });
     go(`/set/${id}`);
+    nudgeGuest();
   };
 
   if (phase.kind === "working") {

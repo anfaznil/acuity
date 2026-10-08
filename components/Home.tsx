@@ -5,6 +5,7 @@ import { createSet, importData, levelInfo, levelTitle, masteryStats, useStore, t
 import { go } from "./App";
 import { Ring } from "./TopBar";
 import { useAccount } from "@/lib/sync";
+import { goSignIn } from "./GuestNudge";
 
 export const GRADS = ["var(--g0)", "var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)", "var(--g5)"];
 
@@ -165,20 +166,38 @@ export default function Home() {
         </div>
       </section>
 
+      {account.checked && !account.username && sets.length > 0 && (
+        <div className="guest-banner mt-24" role="status">
+          <span className="guest-banner-icon">⚠️</span>
+          <div className="grow">
+            <strong>
+              Your {sets.length === 1 ? "set is" : `${sets.length} sets are`} only saved in this browser.
+            </strong>
+            <p style={{ marginTop: 4 }}>
+              They won&apos;t appear in other browsers or on your other devices, and clearing your browsing data deletes them.
+              Create a free account to keep them safe.
+            </p>
+          </div>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => goSignIn("signup")}>
+              Create free account
+            </button>
+            <button className="btn btn-sm" onClick={() => goSignIn("login")}>
+              Sign in
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="section-head">
         <div>
           <h2>Your library</h2>
           <p className="muted">
-            {account.username ? (
-              "Synced to your account on every device."
-            ) : (
-              <>
-                Saved in this browser only.{" "}
-                <button className="btn btn-ghost btn-sm" style={{ padding: "2px 6px" }} onClick={() => go("/account")}>
-                  Sign in to sync
-                </button>
-              </>
-            )}
+            {account.username
+              ? "Synced to your account on every device."
+              : sets.length === 0
+                ? "Sign in to save your sets and use them on any device."
+                : "Saved in this browser only."}
           </p>
         </div>
         <div className="row wrap">

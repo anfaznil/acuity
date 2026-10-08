@@ -11,13 +11,14 @@ import Editor from "./Editor";
 import Profile from "./Profile";
 import Study from "./Study";
 import Account from "./Account";
+import GuestNudge from "./GuestNudge";
 import { startSync } from "@/lib/sync";
 
 export type Route =
   | { name: "home" }
   | { name: "create"; tab?: string }
   | { name: "profile" }
-  | { name: "account" }
+  | { name: "account"; mode?: "signup" | "login" }
   | { name: "set"; id: string }
   | { name: "edit"; id: string }
   | { name: "study"; id: string; mode: string };
@@ -26,7 +27,10 @@ function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
   if (parts[0]?.startsWith("create")) return { name: "create", tab: parts[0].split("?")[1] };
   if (parts[0] === "profile") return { name: "profile" };
-  if (parts[0] === "account") return { name: "account" };
+  if (parts[0]?.split("?")[0] === "account") {
+    const q = parts[0].split("?")[1];
+    return { name: "account", mode: q === "login" || q === "signup" ? q : undefined };
+  }
   if (parts[0] === "set" && parts[1]) {
     if (parts[2] === "edit") return { name: "edit", id: parts[1] };
     if (parts[2]) return { name: "study", id: parts[1], mode: parts[2] };
@@ -63,13 +67,14 @@ export default function App() {
         {route.name === "home" && <Home />}
         {route.name === "create" && <Create initialTab={route.tab} />}
         {route.name === "profile" && <Profile />}
-        {route.name === "account" && <Account />}
+        {route.name === "account" && <Account initialMode={route.mode} />}
         {route.name === "set" && <SetView id={route.id} />}
         {route.name === "edit" && <Editor id={route.id} />}
         {route.name === "study" && <Study id={route.id} mode={route.mode} />}
       </main>
       <footer className="footer">Acuity</footer>
       <FxLayer />
+      <GuestNudge />
     </>
   );
 }
