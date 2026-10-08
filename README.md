@@ -122,7 +122,7 @@ sequenceDiagram
 | --- | --- |
 | Framework | Next.js 16 (App Router, Turbopack), React 19, TypeScript |
 | AI | `@anthropic-ai/sdk`, Claude with tool use |
-| PDF parsing | `pdfjs-dist` 5 (in the browser, in a Web Worker) |
+| PDF parsing | `pdfjs-dist` 5, legacy build + a small `ReadableStream` polyfill so it works in Safari (in the browser, in a Web Worker) |
 | Hosting | Vercel: static CDN plus Node.js serverless functions |
 | State | Browser `localStorage`, synced to a private Vercel Blob store (`@vercel/blob`) |
 | Auth | Username + password, scrypt hashes, HMAC-signed session cookie (`node:crypto`, no auth library) |

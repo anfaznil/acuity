@@ -3,8 +3,10 @@
 export type ExtractResult = { text: string; pages: number };
 
 export async function extractPdfText(file: File, onProgress?: (p: number) => void): Promise<ExtractResult> {
-  const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  await import("./stream-polyfill.js");
+  // Legacy build: polyfills the newer JS features Safari and older browsers are missing.
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf-worker.mjs";
   const data = new Uint8Array(await file.arrayBuffer());
   const doc = await pdfjs.getDocument({ data }).promise;
   const parts: string[] = [];

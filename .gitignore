@@ -5,3 +5,5 @@ node_modules
 public/pdf.worker.min.mjs
 !.env.example
 *.tsbuildinfo
+public/pdf-worker.mjs
+public/pdf-stream-polyfill.mjs
